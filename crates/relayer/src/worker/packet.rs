@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use crossbeam_channel::Receiver;
 use itertools::Itertools;
 use moka::sync::Cache;
-use tracing::{debug, error, error_span, info, trace, warn};
+use tracing::{debug, error, error_span, info, trace};
 
 use ibc_proto::ibc::apps::fee::v1::{IdentifiedPacketFees, QueryIncentivizedPacketRequest};
 use ibc_proto::ibc::core::channel::v1::PacketId;
@@ -117,6 +117,7 @@ pub fn spawn_packet_cmd_worker<ChainA: ChainHandle, ChainB: ChainHandle>(
             handle_packet_cmd(
                 &mut link.lock().unwrap(),
                 &mut should_clear_on_start,
+                idle_worker_timer > packet_cmd_worker_idle_timeout,
                 clear_interval,
                 &path,
                 cmd,
@@ -124,16 +125,10 @@ pub fn spawn_packet_cmd_worker<ChainA: ChainHandle, ChainB: ChainHandle>(
 
             if is_new_batch {
                 idle_worker_timer = 0;
-                trace!("packet worker processed an event batch, reseting idle timer");
+                trace!("packet worker processed an event batch, resetting idle timer");
             } else {
                 idle_worker_timer += 1;
                 trace!("packet worker has not processed an event batch after {idle_worker_timer} blocks, incrementing idle timer");
-            }
-
-            if idle_worker_timer > packet_cmd_worker_idle_timeout {
-                warn!("packet worker has been idle for more than {packet_cmd_worker_idle_timeout} blocks, aborting");
-
-                return Ok(Next::Abort);
             }
         }
 
@@ -198,6 +193,7 @@ pub fn spawn_incentivized_packet_cmd_worker<ChainA: ChainHandle, ChainB: ChainHa
 fn handle_packet_cmd<ChainA: ChainHandle, ChainB: ChainHandle>(
     link: &mut Link<ChainA, ChainB>,
     should_clear_on_start: &mut bool,
+    idle_timeout: bool,
     clear_interval: u64,
     path: &Packet,
     cmd: WorkerCmd,
@@ -215,7 +211,7 @@ fn handle_packet_cmd<ChainA: ChainHandle, ChainB: ChainHandle>(
         // Handle the arrival of an event signaling that the
         // source chain has advanced to a new block
         WorkerCmd::NewBlock { height, .. } => {
-            if *should_clear_on_start || should_clear_packets(clear_interval, *height) {
+            if *should_clear_on_start || (!idle_timeout && should_clear_packets(clear_interval, *height)) {
                 (true, Some(*height))
             } else {
                 (false, None)
