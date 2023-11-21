@@ -366,7 +366,7 @@ fn is_hook_allowed(
         PacketType::WriteAck 
             => config.packets_on_hook_allowed(&packet.dst_chain_id, &packet.dst_channel_id.clone().unwrap(), &packet.data),
         _ => true
-    };
+    }
 }
 
 
