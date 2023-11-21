@@ -360,17 +360,13 @@ fn is_hook_allowed(
         return true;
     }
 
-    let res = match packet.packet_type {
+    match packet.packet_type {
         PacketType::SendPacket | PacketType::TimeoutPacket
             => config.packets_on_hook_allowed(&packet.src_chain_id, &packet.src_channel_id, &packet.data),
         PacketType::WriteAck 
             => config.packets_on_hook_allowed(&packet.dst_chain_id, &packet.dst_channel_id.clone().unwrap(), &packet.data),
         _ => true
     };
-
-    error!("debug log {res}, {:?}", packet);
-
-    res
 }
 
 
