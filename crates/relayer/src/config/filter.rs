@@ -555,7 +555,7 @@ pub enum HookFilterMatch {
         module_name: FilterPattern<String>,
         function_name: FilterPattern<String>,
     },
-    Unknown // alway pass
+    Unknown // ignore unknown filter
 }
 
 impl HookFilters {
