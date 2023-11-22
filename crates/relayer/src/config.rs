@@ -265,6 +265,33 @@ impl Config {
         }
     }
 
+    pub fn packets_on_hook_allowed(
+        &self,
+        chain_id: &ChainId,
+        channel_id: &ChannelId,
+        data: &Vec<u8>,
+    ) -> bool {
+        match self.find_chain(chain_id) {
+            Some(chain_config) => {
+                let hook_policy: Option<filter::HookPolicy> = chain_config
+                    .packet_filter()
+                    .hook_policy
+                    .iter()
+                    .find(|(channel, _)| channel.matches(&channel_id))
+                    .map(|(_, filter)| filter)
+                    .cloned();
+
+                // if no hook policy pass
+                if hook_policy.is_none() {
+                    return true
+                };
+
+                hook_policy.unwrap().is_allowed(data)
+            },
+            None => false,
+        }
+    }
+
     pub fn chains_map(&self) -> BTreeMap<&ChainId, &ChainConfig> {
         self.chains.iter().map(|c| (c.id(), c)).collect()
     }

@@ -9,7 +9,7 @@ use crate::{
     chain::{counterparty::connection_state_on_destination, handle::ChainHandle},
     client_state::IdentifiedAnyClientState,
     config::Config,
-    object::{Channel, Client, Connection, Object, Packet, Wallet},
+    object::{Channel, Client, Connection, Object, Packet, Wallet, PacketType},
     registry::Registry,
     supervisor::error::Error as SupervisorError,
     telemetry,
@@ -285,10 +285,13 @@ impl<'a, Chain: ChainHandle> SpawnContext<'a, Chain> {
                 if has_packets() || has_acks() {
                     // Create the Packet object and spawn worker
                     let path_object = Object::Packet(Packet {
+                        packet_type: PacketType::SendPacket, //temp
                         dst_chain_id: counterparty_chain.id(),
+                        dst_channel_id: None,
                         src_chain_id: chain.id(),
                         src_channel_id: channel_scan.channel.channel_id.clone(),
                         src_port_id: channel_scan.channel.port_id.clone(),
+                        data: vec![],
                     });
 
                     self.workers
