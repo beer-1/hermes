@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use flex_error::define_error;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 use ibc_relayer_types::applications::ics29_fee::events::IncentivizedPacket;
 use ibc_relayer_types::core::{
@@ -98,8 +98,12 @@ impl Channel {
 /// A packet worker between a source and destination chain, and a specific channel and port.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Packet {
+    pub packet_type: PacketType,
     /// Destination chain identifier.
     pub dst_chain_id: ChainId,
+
+    /// Destination channel identifier.
+    pub dst_channel_id: Option<ChannelId>,
 
     /// Source chain identifier.
     pub src_chain_id: ChainId,
@@ -109,6 +113,9 @@ pub struct Packet {
 
     /// Source port identifier.
     pub src_port_id: PortId,
+
+    /// packet data.
+    pub data: Vec<u8>,
 }
 
 impl Packet {
@@ -119,6 +126,32 @@ impl Packet {
         )
     }
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
+pub enum PacketType {
+    SendPacket,
+    WriteAck,
+    TimeoutPacket,
+    CloseInitChannel,
+    IncentivizedPacket,
+}
+
+impl Serialize for PacketType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            PacketType::SendPacket => serializer.serialize_str(&"send_packet"),
+            PacketType::WriteAck => serializer.serialize_str(&"write_ack"),
+            PacketType::TimeoutPacket => serializer.serialize_str(&"timeout_packet"),
+            PacketType::CloseInitChannel => serializer.serialize_str(&"close_init_channel"),
+            PacketType::IncentivizedPacket => serializer.serialize_str(&"incentivized_packet"),
+        }
+    }
+}
+
+
 
 /// A wallet worker which monitors the balance of the wallet in use by Hermes
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -473,10 +506,13 @@ impl Object {
         .map_err(ObjectError::supervisor)?;
 
         Ok(Packet {
+            packet_type: PacketType::SendPacket,
             dst_chain_id,
+            dst_channel_id: Some(e.packet.destination_channel.clone()),
             src_chain_id: src_chain.id(),
             src_channel_id: e.packet.source_channel.clone(),
             src_port_id: e.packet.source_port.clone(),
+            data: e.packet.data.clone(),
         }
         .into())
     }
@@ -494,10 +530,13 @@ impl Object {
         .map_err(ObjectError::supervisor)?;
 
         Ok(Packet {
+            packet_type: PacketType::WriteAck,
             dst_chain_id,
+            dst_channel_id: Some(e.packet.source_channel.clone()),
             src_chain_id: src_chain.id(),
             src_channel_id: e.packet.destination_channel.clone(),
             src_port_id: e.packet.destination_port.clone(),
+            data: e.packet.data.clone(),
         }
         .into())
     }
@@ -515,10 +554,13 @@ impl Object {
         .map_err(ObjectError::supervisor)?;
 
         Ok(Packet {
+            packet_type: PacketType::TimeoutPacket,
             dst_chain_id,
+            dst_channel_id: Some(e.dst_channel_id().clone()),
             src_chain_id: src_chain.id(),
             src_channel_id: e.src_channel_id().clone(),
             src_port_id: e.src_port_id().clone(),
+            data: e.packet.data.clone(),
         }
         .into())
     }
@@ -532,10 +574,13 @@ impl Object {
             .map_err(ObjectError::supervisor)?;
 
         Ok(Packet {
+            packet_type: PacketType::CloseInitChannel,
             dst_chain_id,
+            dst_channel_id: e.counterparty_channel_id().cloned(),
             src_chain_id: src_chain.id(),
             src_channel_id: e.channel_id().clone(),
             src_port_id: e.port_id().clone(),
+            data: vec![],
         }
         .into())
     }
@@ -565,10 +610,13 @@ impl Object {
             .map_err(ObjectError::supervisor)?;
 
         Ok(Packet {
+            packet_type: PacketType::IncentivizedPacket,
             dst_chain_id,
+            dst_channel_id: None,
             src_chain_id: src_chain.id(),
             src_channel_id: e.channel_id.clone(),
             src_port_id: e.port_id.clone(),
+            data: vec![],
         }
         .into())
     }
