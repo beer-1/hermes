@@ -22,7 +22,7 @@ use crate::{
         source::{self, Error as EventError, ErrorDetail as EventErrorDetail, EventBatch},
         IbcEventWithHeight,
     },
-    object::Object,
+    object::{Object, PacketType},
     registry::{Registry, SharedRegistry},
     rest,
     supervisor::scan::ScanMode,
@@ -327,6 +327,14 @@ fn channel_filter_enabled(_config: &Config) -> bool {
     true
 }
 
+/// Returns `true` if the relayer should filter based on
+/// channel identifiers.
+/// Returns `false` otherwise.
+fn hook_filter_enabled(_config: &Config) -> bool {
+    // we currently always enable the hook filter
+    true
+}
+
 /// Whether or not the given channel is allowed by the filter policy, if any.
 fn is_channel_allowed(
     config: &Config,
@@ -341,6 +349,26 @@ fn is_channel_allowed(
 
     config.packets_on_channel_allowed(chain_id, port_id, channel_id)
 }
+
+/// Whether or not the given hook is allowed by the filter policy, if any.
+fn is_hook_allowed(
+    config: &Config,
+    packet: &crate::object::Packet
+) -> bool {
+    // If filtering is disabled, then relay all channels
+    if !hook_filter_enabled(config) {
+        return true;
+    }
+
+    match packet.packet_type {
+        PacketType::SendPacket
+            => config.packets_on_hook_allowed(&packet.src_chain_id, &packet.src_channel_id, &packet.data),
+        PacketType::WriteAck 
+            => config.packets_on_hook_allowed(&packet.dst_chain_id, &packet.dst_channel_id.clone().unwrap(), &packet.data),
+        _ => true
+    }
+}
+
 
 /// Whether or not the relayer should relay packets
 /// or complete handshakes for the given [`Object`].
@@ -362,6 +390,10 @@ fn relay_on_object<Chain: ChainHandle>(
             if !is_channel_allowed(config, chain_id, &p.src_port_id, &p.src_channel_id) {
                 // Forbid relaying packets on that channel
                 return false;
+            }
+
+            if !is_hook_allowed(config, &p) {
+                return false
             }
         }
         Object::Channel(c) => {
